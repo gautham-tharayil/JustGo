@@ -11,7 +11,7 @@ const Spinner = () => (
 
 // --- Dashboard Component ---
 // This component is shown after a user successfully logs in.
-// I've created it here to make the example fully runnable.
+// I've included it here to make the example fully runnable.
 const Dashboard = ({ user, onLogout }) => {
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -21,10 +21,10 @@ const Dashboard = ({ user, onLogout }) => {
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        // Corrected the endpoint to /api/dashboard
+        // This endpoint now correctly matches the Flask server route.
         const response = await fetch(`${API_URL}/api/dashboard`);
         if (!response.ok) {
-          throw new Error('Failed to fetch dashboard data.');
+          throw new Error('Failed to fetch dashboard data. The server might be down.');
         }
         const dashboardData = await response.json();
         setData(dashboardData);
@@ -36,7 +36,7 @@ const Dashboard = ({ user, onLogout }) => {
     };
 
     fetchDashboardData();
-  }, []);
+  }, []); // The empty dependency array ensures this runs only once when the component mounts.
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 sm:p-6 lg:p-8">
@@ -56,7 +56,7 @@ const Dashboard = ({ user, onLogout }) => {
         </header>
 
         {/* Main Content */}
-        {isLoading && <p className="text-center text-gray-500">Loading dashboard...</p>}
+        {isLoading && <p className="text-center text-gray-500 mt-8">Loading dashboard...</p>}
         {error && <p className="text-center text-red-500 bg-red-100 p-3 rounded-lg">{error}</p>}
         {data && (
           <div className="bg-white p-6 rounded-xl shadow-md">
@@ -83,7 +83,7 @@ const Dashboard = ({ user, onLogout }) => {
 };
 
 
-// --- Main App Component ---
+// --- Main App Component (Login Page) ---
 // This is the main component that handles login logic.
 export default function App() {
   const [user, setUser] = useState(null);
@@ -99,7 +99,7 @@ export default function App() {
     setIsLoading(true);
 
     try {
-      // ***FIXED***: Changed endpoint from `/login` to `/api/login` to match the Flask server.
+      // The endpoint '/api/login' now correctly matches the Flask server.
       const response = await fetch(`${API_URL}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -108,20 +108,16 @@ export default function App() {
 
       const data = await response.json();
 
-      // Check if the response was not successful (e.g., 401 Unauthorized)
       if (!response.ok) {
-        // Use the error message from the server, or a default message.
         throw new Error(data.error || "Login failed. Please check your credentials.");
       }
       
-      // ***FIXED***: Correctly accessed user data from `data.user.id` and `data.user.email`.
+      // Correctly access the user object from the server's response.
       setUser({ id: data.user.id, email: data.user.email });
       
     } catch (err) {
-      // Set the error message to be displayed to the user.
       setError(err.message);
     } finally {
-      // Always stop loading, whether success or failure.
       setIsLoading(false);
     }
   };
@@ -151,7 +147,6 @@ export default function App() {
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
-          {/* Display error message if it exists */}
           {error && (
             <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg text-center">
               <span className="font-medium">{error}</span>
@@ -195,7 +190,6 @@ export default function App() {
               className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-400"
               disabled={isLoading}
             >
-              {/* Show spinner when loading, otherwise show text */}
               {isLoading ? <Spinner /> : 'Sign in'}
             </button>
           </div>
