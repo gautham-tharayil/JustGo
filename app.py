@@ -1,59 +1,107 @@
 import os
-from flask import Flask
+from flask import Flask, jsonify, request
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
 from dotenv import load_dotenv
-
-# Import your database and blueprint objects
-from models import db
-from routes.auth_routes import auth_bp
-from routes.trip_routes import trip_bp
-from routes.weather_routes import weather_bp
 
 # Load environment variables from a .env file
 load_dotenv()
 
-def create_app():
-    """
-    Application factory function to create and configure the Flask app.
-    """
-    app = Flask(__name__)
+# --- Application Setup ---
+app = Flask(__name__)
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "a-default-secret-key")
+jwt = JWTManager(app)
+CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}})
 
-    # --- Configuration ---
-    # Load configuration from environment variables or a config object
-    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "your-fallback-secret-key")
-    app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "your-fallback-jwt-secret")
+# --- In-Memory Data Store (No Database) ---
+# We use simple lists of dictionaries to store data.
+users = []
+trips = {
+    # We'll store trips by user email for easy access
+}
+
+# Helper function to find a user
+def find_user_by_email(email):
+    return next((user for user in users if user['email'] == email), None)
+
+# --- API Routes ---
+
+# --- Auth Routes ---
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    email = data.get("email")
+    password = data.get("password")
+
+    if not email or not password:
+        return jsonify({"success": False, "message": "Email and password required"}), 400
+
+    if find_user_by_email(email):
+        return jsonify({"success": False, "message": "User already exists"}), 400
     
-    # Database configuration
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    db_path = os.path.join(base_dir, "travel_planner.db")
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    # In a real app, you MUST hash passwords. For simplicity, we are storing it directly.
+    new_user = {"id": len(users) + 1, "email": email, "password": password}
+    users.append(new_user)
+    
+    # Initialize an empty list of trips for the new user
+    trips[email] = []
 
-    # --- Initialize Extensions ---
-    db.init_app(app)
-    JWTManager(app)
-    # Apply CORS to all routes starting with /api/
-    CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}})
+    return jsonify({"success": True, "message": "User registered successfully"}), 201
 
-    # --- Register Blueprints ---
-    # This is the crucial step that connects your route files to the app.
-    app.register_blueprint(auth_bp, url_prefix='/api/auth')
-    app.register_blueprint(trip_bp, url_prefix='/api/trips')
-    app.register_blueprint(weather_bp, url_prefix='/api/weather')
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    email = data.get("email")
+    password = data.get("password")
+    
+    user = find_user_by_email(email)
 
-    # --- Create Database Tables ---
-    # The app context is needed for SQLAlchemy to know which app instance to work with.
-    with app.app_context():
-        db.create_all()
-        print(f"✅ Database tables created at: {db_path}")
+    # IMPORTANT: Comparing passwords in plain text is not secure.
+    # This is done only to simplify the example by removing the database and hashing.
+    if not user or user['password'] != password:
+        return jsonify({"success": False, "message": "Invalid credentials"}), 401
 
-    return app
+    access_token = create_access_token(identity=user['email'])
+    return jsonify({
+        "success": True, 
+        "token": access_token, 
+        "user": {"id": user['id'], "email": user['email']}
+    }), 200
+
+# --- Trip & Dashboard Routes ---
+@app.route("/api/trips/dashboard-overview", methods=["GET"])
+@jwt_required()
+def get_dashboard_overview():
+    current_user_email = get_jwt_identity()
+    user_trips = trips.get(current_user_email, [])
+    
+    overview_data = {
+        "welcome": "Welcome to your In-Memory Travel Planner!",
+        "user_stats": {
+            "total_trips": len(user_trips), 
+            "upcoming_trips": len(user_trips), # Simplified for this example
+            "completed_trips": 0 # Simplified for this example
+        }
+    }
+    return jsonify(overview_data)
+
+@app.route("/api/trips/", methods=["GET"])
+@jwt_required()
+def get_user_trips():
+    current_user_email = get_jwt_identity()
+    
+    # If this is the first time a user logs in, create some mock data for them.
+    if not trips.get(current_user_email):
+        trips[current_user_email] = [
+            {"id": 1, "title": "Summer in Paris", "destination_city": "Paris", "destination_country": "France"},
+            {"id": 2, "title": "Tokyo Adventure", "destination_city": "Tokyo", "destination_country": "Japan"},
+        ]
+        
+    user_trips = trips.get(current_user_email, [])
+    
+    return jsonify({"success": True, "data": {"trips": user_trips}}), 200
 
 # --- App Runner ---
 if __name__ == "__main__":
-    app = create_app()
-    print("🚀 Starting Flask server...")
-    print("📍 Server will be available at: http://localhost:5000")
-    print("🔧 Debug mode: ON")
+    print("🚀 Starting Flask server (No Database)...")
     app.run(debug=True, host='0.0.0.0', port=5000)
