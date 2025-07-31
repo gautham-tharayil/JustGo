@@ -9,26 +9,23 @@ load_dotenv()
 
 # --- Application Setup ---
 app = Flask(__name__)
-app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "a-default-secret-key")
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY")
 jwt = JWTManager(app)
 CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}})
 
 # --- In-Memory Data Store (No Database) ---
-# We use simple lists of dictionaries to store data.
 users = []
-trips = {
-    # We'll store trips by user email for easy access
-}
+trips = {}
 
-# Helper function to find a user
 def find_user_by_email(email):
+    """Helper function to find a user by email."""
     return next((user for user in users if user['email'] == email), None)
 
 # --- API Routes ---
 
-# --- Auth Routes ---
 @app.route('/api/auth/register', methods=['POST'])
 def register():
+    """Registers a new user."""
     data = request.get_json()
     email = data.get("email")
     password = data.get("password")
@@ -39,25 +36,23 @@ def register():
     if find_user_by_email(email):
         return jsonify({"success": False, "message": "User already exists"}), 400
     
-    # In a real app, you MUST hash passwords. For simplicity, we are storing it directly.
+    # NOTE: In a real app, you MUST hash passwords.
     new_user = {"id": len(users) + 1, "email": email, "password": password}
     users.append(new_user)
-    
-    # Initialize an empty list of trips for the new user
-    trips[email] = []
+    trips[email] = [] # Initialize trips for the new user
 
     return jsonify({"success": True, "message": "User registered successfully"}), 201
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
+    """Logs in a user and returns a JWT token."""
     data = request.get_json()
     email = data.get("email")
     password = data.get("password")
     
     user = find_user_by_email(email)
 
-    # IMPORTANT: Comparing passwords in plain text is not secure.
-    # This is done only to simplify the example by removing the database and hashing.
+    # NOTE: This is not secure. Only for demonstration without a database.
     if not user or user['password'] != password:
         return jsonify({"success": False, "message": "Invalid credentials"}), 401
 
@@ -68,10 +63,10 @@ def login():
         "user": {"id": user['id'], "email": user['email']}
     }), 200
 
-# --- Trip & Dashboard Routes ---
 @app.route("/api/trips/dashboard-overview", methods=["GET"])
 @jwt_required()
 def get_dashboard_overview():
+    """Provides overview stats for the dashboard."""
     current_user_email = get_jwt_identity()
     user_trips = trips.get(current_user_email, [])
     
@@ -79,8 +74,8 @@ def get_dashboard_overview():
         "welcome": "Welcome to your In-Memory Travel Planner!",
         "user_stats": {
             "total_trips": len(user_trips), 
-            "upcoming_trips": len(user_trips), # Simplified for this example
-            "completed_trips": 0 # Simplified for this example
+            "upcoming_trips": len(user_trips), 
+            "completed_trips": 0
         }
     }
     return jsonify(overview_data)
@@ -88,17 +83,17 @@ def get_dashboard_overview():
 @app.route("/api/trips/", methods=["GET"])
 @jwt_required()
 def get_user_trips():
+    """Gets trips for the logged-in user, creating mock data if none exist."""
     current_user_email = get_jwt_identity()
     
-    # If this is the first time a user logs in, create some mock data for them.
-    if not trips.get(current_user_email):
+    # Create mock data for a user on their first fetch.
+    if current_user_email not in trips or not trips[current_user_email]:
         trips[current_user_email] = [
             {"id": 1, "title": "Summer in Paris", "destination_city": "Paris", "destination_country": "France"},
             {"id": 2, "title": "Tokyo Adventure", "destination_city": "Tokyo", "destination_country": "Japan"},
         ]
         
     user_trips = trips.get(current_user_email, [])
-    
     return jsonify({"success": True, "data": {"trips": user_trips}}), 200
 
 # --- App Runner ---
